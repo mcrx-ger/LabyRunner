@@ -162,25 +162,29 @@ class Player:
                     game.vert_list[y-1] = game.vert_list[y-1][0:x:1] + "m" + game.vert_list[y-1][x+1::1]
                     game.vert_list[y] = game.vert_list[y][0:x:1] + "m" + game.vert_list[y][x+1::1]
                     game.point_list[self.selected_point] = (0,1)
+                    self.move_counter += 1
             elif keys[pygame.K_a] or (x_move < -0.1 and abs(x_move) >= abs(y_move)) or keys[pygame.K_d] or (x_move > 0.1 and x_move >= abs(y_move)):
                 if game.point_list[self.selected_point][0] == 0:
                     game.hor_list[y] = game.hor_list[y][0:x-1:1] + "mm" + game.hor_list[y][x+1::1]
                     game.vert_list[y-1] = game.vert_list[y-1][0:x:1] + "#" + game.vert_list[y-1][x+1::1]
                     game.vert_list[y] = game.vert_list[y][0:x:1] + "#" + game.vert_list[y][x+1::1]
                     game.point_list[self.selected_point] = (1,1)
+                    self.move_counter += 1
 
             if (cb or keys[pygame.K_SPACE]) and current_time - self.last_button_time >= BUTTON_DELAY:
                 self.selected = False
                 self.last_button_time = current_time
-                self.move_counter += 1
 
 class Opponents():
     def __init__(self):
         self.opp_positions = [[0,0],[0,0],[0,0]]
         #random opponent positions
+        centre = pygame.math.Vector2(6,6)
         for i in range (3):
-            for e in range (2):
-                self.opp_positions[i][e] = random.randint(0,12)
+            dist = 0
+            while dist < 5:
+                for e in range(2): self.opp_positions[i][e] = random.randint(0,12)
+                dist = centre.distance_to(tuple(self.opp_positions[i]))
         #Appearance
         self.opp_image = pygame.surface.Surface((TILE_SIZE - 30, TILE_SIZE - 30))
         self.opp_image.fill("gray")
@@ -195,7 +199,7 @@ class Opponents():
 
     def move(self):
         current_time = pygame.time.get_ticks()
-        if current_time - self.last_move_time >= MOVE_DELAY * 0.75:
+        if current_time - self.last_move_time >= MOVE_DELAY * 0.5:
             for i in range (3):
                 self.opp_positions[i] = self.shortest_paths[i][0]
                 self.shortest_paths[i].pop(0)
