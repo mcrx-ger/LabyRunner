@@ -201,9 +201,12 @@ class Opponents():
         current_time = pygame.time.get_ticks()
         if current_time - self.last_move_time >= MOVE_DELAY * 0.5:
             for i in range (3):
-                self.opp_positions[i] = self.shortest_paths[i][0]
-                self.shortest_paths[i].pop(0)
-                self.last_move_time = current_time
+                try:
+                    self.opp_positions[i] = self.shortest_paths[i][0]
+                    self.shortest_paths[i].pop(0)
+                    self.last_move_time = current_time
+                except:
+                    continue
 
 
 class Game():
@@ -290,6 +293,32 @@ class Game():
             else:
                 pygame.draw.circle(self.screen, (200, 0, 0), (x * TILE_SIZE, y * TILE_SIZE), 5)
 
+    def show_final_screen(self):
+
+        def paint_final_screen(screen, rect_size, color):
+            for y in range (len(screen)):
+                for x in range (len(screen[0])):
+                    if screen[y][x] == "#": pygame.draw.rect(self.screen, color, (x * rect_size, y * rect_size, rect_size, rect_size), width=0)
+            
+        if self.winmode:
+            screen = self.data["screen_won"]
+            rect_size = 650 / 19
+            color = "green"
+        else:
+            screen = self.data["screen_lost"]
+            rect_size = 650 / 25
+            color = "red"
+        while True:
+            self.screen.fill((0,0,100))
+            paint_final_screen(screen, rect_size, color)
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+        
+            pygame.display.update()
+            self.clock.tick(60)
+
     def bfs(self, opp_num):    #bfs format: [([6,7 #pos], [[0,0],[0,1],[1,1],...#path), ...(#nächster Weg)]
         queue = deque([(self.opp.opp_positions[opp_num], [])])
         player_pos = [int((self.player.pos[0] - 10) // TILE_SIZE), int((self.player.pos[1] - 10) // TILE_SIZE)]
@@ -318,7 +347,6 @@ class Game():
         #print(self.opp.shortest_paths)
 
     def run(self):
-        #self.paint_walls()
         self.player = Player()
         self.opp = Opponents()
         self.update_opp()
@@ -326,24 +354,21 @@ class Game():
             self.screen.fill((0,0,100))
             self.player.control_walls()
             self.paint_walls()
-            #pygame.draw.rect(self.screen, (125,75,45), self.wall)
             self.screen.blit(self.player.image, self.player.pos)
             self.player.move()
             player_pos = [(self.player.pos[0] - 10) / TILE_SIZE, (self.player.pos[1] - 10) / TILE_SIZE]
             if player_pos in self.finish_list:
-                print("Du hast gewonnen.")
-                running = False
-                pygame.quit()
-                sys.exit()
+                self.winmode = True
+                self.running = False
+                break
             if self.player.move_counter == 1:
                 self.player.move_counter = 0
                 self.update_opp()
             self.opp.move()
             if player_pos in self.opp.opp_positions:
-                print("Du hast verloren.")
-                running = False
-                pygame.quit()
-                sys.exit()
+                self.winmode = False
+                self.running = False
+                break
             self.opp.draw()
             if self.player.moving and self.player.movable(self.player.pos, self.player.temp_pos, "player"):
                 self.screen.blit(self.player.shade, self.player.temp_pos)
@@ -356,6 +381,6 @@ class Game():
 
             pygame.display.update()
             self.clock.tick(60)
-
+        self.show_final_screen()
 game = Game()
 game.run()
