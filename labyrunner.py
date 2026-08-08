@@ -5,7 +5,7 @@ import random
 from collections import deque
 
 MOVE_DELAY = 1000 #ms
-BUTTON_DELAY = 300
+BUTTON_DELAY = 500
 TILE_SIZE = 50
 PLAYER_SIZE = 30
 WINDOW_SIZE = (650, 650)
@@ -27,7 +27,6 @@ class Player:
         self.point_centre = pygame.math.Vector2((6,6))
         self.last_button_time = 0
         self.last_steering_time = 0
-        self.closest_points = {"N": (0,0), "S": (0,0), "W": (0,0), "E": (0,0)}
         self.move_counter = 0
 
 
@@ -67,26 +66,36 @@ class Player:
         else:
             return False
 
-    def search_closest_points(self, centre):
-        cdn = 1000 #closest distance north
-        cds = 1000 
-        cdw = 1000
-        cde = 1000
-        for x,y in game.point_list:
-            distance = centre.distance_to((x,y))
-            if distance != 0:
-                if centre.y > y and distance < cdn: #wenn nördlich und kleinster abstand
-                    self.closest_points["N"] = (x,y)
-                    cdn = distance
-                if centre.y < y and distance < cds: #wenn südlich und kleinster abstand
-                    self.closest_points["S"] = (x,y)
-                    cds = distance
-                if centre.x > x and distance < cdw: #wenn westlich und kleinster abstand
-                    self.closest_points["W"] = (x,y)
-                    cdw = distance
-                if centre.x < x and distance < cde: #wenn östlich und kleinster abstand
-                    self.closest_points["E"] = (x,y) 
-                    cde = distance 
+    def search_closest_point(self, vec_centre, x_c, y_c):
+        vec_controller = pygame.math.Vector2(x_c, y_c)
+        point_acc_list = {}
+        max_dist = 0
+        max_acc = (0,0)
+
+        for x_p,y_p in game.point_list:
+            vec_point = pygame.math.Vector2(x_p, y_p) - vec_centre
+            if abs(vec_point.angle_to(vec_controller)) > abs(pygame.math.Vector2(-vec_point.x, vec_point.y).angle_to(pygame.math.Vector2(-vec_controller.x, vec_controller.y))): 
+                deg = 360 - abs(vec_point.angle_to(vec_controller))
+            else: deg = abs(vec_point.angle_to(vec_controller))
+            deg_acc = (360 - deg) / 360
+            distance = vec_point.length()
+            point_acc_list[(x_p, y_p)] = [deg_acc, distance]
+            if distance > max_dist:
+                max_dist = distance
+
+        for x_p,y_p in game.point_list:
+            deg_acc, distance = point_acc_list[(x_p, y_p)]
+            p_acc = 0.85 * deg_acc + 0.15 * ((max_dist - distance) / max_dist)
+            point_acc_list[(x_p, y_p)] = p_acc
+
+            if (x_p,y_p) != self.selected_point:
+                if max_acc == (0,0):
+                    max_acc = (x_p, y_p)
+                elif p_acc > point_acc_list[max_acc]:
+                    max_acc = (x_p, y_p)
+            #acc für jeden Punkt ausrechnen, Punkt mit höchster acc speichern, dann zurückgeben
+
+        return max_acc
 
     def move(self):
         keys = pygame.key.get_pressed()
@@ -130,16 +139,17 @@ class Player:
             cb = False
         current_time = pygame.time.get_ticks()
         if not self.selected:
-            self.search_closest_points(self.point_centre)
             temp_centre = (0,0)
-            if keys[pygame.K_w] or (y_move < -0.1 and abs(y_move) > abs(x_move)):
-                temp_centre = self.closest_points["N"]
-            elif keys[pygame.K_s] or (y_move > 0.1 and y_move > abs(x_move)):
-                temp_centre = self.closest_points["S"]
-            elif keys[pygame.K_a] or (x_move < -0.1 and abs(x_move) >= abs(y_move)):
-                temp_centre = self.closest_points["W"]
-            elif keys[pygame.K_d] or (x_move > 0.1 and x_move >= abs(y_move)):
-                temp_centre = self.closest_points["E"]
+            if abs(y_move) > 0.1 or abs(x_move) > 0.5:
+                temp_centre = self.search_closest_point(self.point_centre, x_move, y_move)
+            elif keys[pygame.K_w]:
+                temp_centre = self.search_closest_point(self.point_centre, 0, -1)
+            elif keys[pygame.K_s]:
+                temp_centre = self.search_closest_point(self.point_centre, 0, 1)
+            elif keys[pygame.K_a]:
+                temp_centre = self.search_closest_point(self.point_centre, -1, 0)
+            elif keys[pygame.K_d]:
+                temp_centre = self.search_closest_point(self.point_centre, 1, 0)
 
             if current_time - self.last_steering_time >= MOVE_DELAY and temp_centre != (0,0):
                 if self.selected_point != (0,0):
@@ -199,14 +209,15 @@ class Opponents():
 
     def move(self):
         current_time = pygame.time.get_ticks()
-        if current_time - self.last_move_time >= MOVE_DELAY * 0.5:
+        if current_time - self.last_move_time >= MOVE_DELAY * 1:
             for i in range (3):
-                try:
+                if self.opp_positions[i] == self.shortest_paths[i][0]:
+                    self.opp_positions[i] = self.shortest_paths[i][0]
+                    self.last_move_time = current_time
+                else:
                     self.opp_positions[i] = self.shortest_paths[i][0]
                     self.shortest_paths[i].pop(0)
                     self.last_move_time = current_time
-                except:
-                    continue
 
 
 class Game():
@@ -298,7 +309,7 @@ class Game():
         def paint_final_screen(screen, rect_size, color):
             for y in range (len(screen)):
                 for x in range (len(screen[0])):
-                    if screen[y][x] == "#": pygame.draw.rect(self.screen, color, (x * rect_size, y * rect_size, rect_size, rect_size), width=0)
+                    if screen[y][x] == "#": pygame.draw.rect(self.screen, color, (x * rect_size, y * rect_size, rect_size, rect_size), width=0, border_radius=0)
             
         if self.winmode:
             screen = self.data["screen_won"]
@@ -324,17 +335,21 @@ class Game():
         player_pos = [int((self.player.pos[0] - 10) // TILE_SIZE), int((self.player.pos[1] - 10) // TILE_SIZE)]
         visited = []
         while True:
-            pos, path = queue.popleft()
-            v = pygame.math.Vector2(pos)
-            if pos not in visited:
-                np = path
-                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                    if self.player.movable(v, v + (dx, dy), "opp") and [v.x + dx, v.y + dy] not in visited:
-                        queue.append(([int(v.x) + dx, int(v.y) + dy], np + [pos]))
-                    if pos == player_pos:
-                        self.opp.shortest_paths[opp_num] = (np + [pos])[1:]
-                        return
-                visited.append(pos)
+            try:
+                pos, path = queue.popleft()
+                v = pygame.math.Vector2(pos)
+                if pos not in visited:
+                    np = path
+                    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                        if self.player.movable(v, v + (dx, dy), "opp") and [v.x + dx, v.y + dy] not in visited:
+                            queue.append(([int(v.x) + dx, int(v.y) + dy], np + [pos]))
+                        if pos == player_pos:
+                            self.opp.shortest_paths[opp_num] = (np + [pos])[1:]
+                            return
+                    visited.append(pos)
+            except IndexError:
+                self.opp.shortest_paths[opp_num][0] = self.opp.opp_positions[opp_num]
+                break
                          
 
             #else:
@@ -361,7 +376,7 @@ class Game():
                 self.winmode = True
                 self.running = False
                 break
-            if self.player.move_counter == 1:
+            if self.player.move_counter > 0:
                 self.player.move_counter = 0
                 self.update_opp()
             self.opp.move()
