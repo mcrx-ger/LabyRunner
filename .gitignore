@@ -1,3 +1,5 @@
 game.py
-map_small.png
-map.png
+data/images/map_small.png
+data/images/map.png
+data/images/player.png
+data/images/enemy.png

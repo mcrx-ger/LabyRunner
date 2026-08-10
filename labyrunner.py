@@ -3,9 +3,11 @@ import sys
 import json
 import random
 from collections import deque
+import math
 
 MOVE_DELAY = 1000 #ms
 BUTTON_DELAY = 500
+RADAR_DELAY = 5000
 TILE_SIZE = 50
 PLAYER_SIZE = 30
 WINDOW_SIZE = (650, 650)
@@ -13,6 +15,7 @@ WINDOW_SIZE = (650, 650)
 class Player:
     def __init__(self):
         #Player / Shadow appearances
+        #self.image = pygame.image.load("data/images/player.png")
         self.image = pygame.surface.Surface((TILE_SIZE - 20, TILE_SIZE - 20))
         self.image.fill((255,0,0))
         self.pos = (6*TILE_SIZE + 10, 6*TILE_SIZE + 10)
@@ -73,27 +76,27 @@ class Player:
         max_acc = (0,0)
 
         for x_p,y_p in game.point_list:
-            vec_point = pygame.math.Vector2(x_p, y_p) - vec_centre
-            if abs(vec_point.angle_to(vec_controller)) > abs(pygame.math.Vector2(-vec_point.x, vec_point.y).angle_to(pygame.math.Vector2(-vec_controller.x, vec_controller.y))): 
-                deg = 360 - abs(vec_point.angle_to(vec_controller))
-            else: deg = abs(vec_point.angle_to(vec_controller))
-            deg_acc = (360 - deg) / 360
-            distance = vec_point.length()
-            point_acc_list[(x_p, y_p)] = [deg_acc, distance]
-            if distance > max_dist:
-                max_dist = distance
+            if (x_p,y_p) != self.selected_point:
+                vec_point = pygame.math.Vector2(x_p, y_p) - vec_centre
+                f = vec_point.dot(vec_controller) / (vec_point.length() * vec_controller.length())
+                deg = math.degrees(math.acos(f))
+                deg_acc = (180 - deg) / 180
+                distance = vec_point.length()
+                point_acc_list[(x_p, y_p)] = [deg_acc, distance]
+                if distance > max_dist:
+                    max_dist = distance
 
         for x_p,y_p in game.point_list:
-            deg_acc, distance = point_acc_list[(x_p, y_p)]
-            p_acc = 0.85 * deg_acc + 0.15 * ((max_dist - distance) / max_dist)
-            point_acc_list[(x_p, y_p)] = p_acc
-
             if (x_p,y_p) != self.selected_point:
+                deg_acc, distance = point_acc_list[(x_p, y_p)]
+                p_acc = 0.67 * deg_acc + 0.33 * ((max_dist - distance) / max_dist)
+                point_acc_list[(x_p, y_p)] = p_acc
+
                 if max_acc == (0,0):
                     max_acc = (x_p, y_p)
                 elif p_acc > point_acc_list[max_acc]:
                     max_acc = (x_p, y_p)
-            #acc für jeden Punkt ausrechnen, Punkt mit höchster acc speichern, dann zurückgeben
+
 
         return max_acc
 
@@ -197,19 +200,19 @@ class Opponents():
                 dist = centre.distance_to(tuple(self.opp_positions[i]))
         #Appearance
         self.opp_image = pygame.surface.Surface((TILE_SIZE - 30, TILE_SIZE - 30))
+        #self.opp_image = pygame.image.load("data/images/enemy.png")
         self.opp_image.fill("gray")
         self.screen = game.screen #pygame.display.get_surface()
         self.shortest_paths = [[], [], []]
         self.last_move_time = 0
 
-    def draw(self):
-        for i in range (3):
-            pos = ((self.opp_positions[i][0] * TILE_SIZE + 15), (self.opp_positions[i][1] * TILE_SIZE + 15))
-            self.screen.blit(self.opp_image, pos)
+    def draw(self, i):
+        pos = ((self.opp_positions[i][0] * TILE_SIZE + 15), (self.opp_positions[i][1] * TILE_SIZE + 15))
+        self.screen.blit(self.opp_image, pos)
 
     def move(self):
         current_time = pygame.time.get_ticks()
-        if current_time - self.last_move_time >= MOVE_DELAY * 1:
+        if current_time - self.last_move_time >= MOVE_DELAY * 0.7:
             for i in range (3):
                 if self.opp_positions[i] == self.shortest_paths[i][0]:
                     self.opp_positions[i] = self.shortest_paths[i][0]
@@ -248,6 +251,8 @@ class Game():
         self.make_vert_list()
         self.make_point_list()
         self.finish_list = [[0,0], [0,12], [12,0], [12,12]]
+        self.radar_list = []
+        self.last_radar_time = -5000
 
     def make_vert_list(self):
         lines = self.data["grid"][1::2]
@@ -360,6 +365,37 @@ class Game():
         for i in range(3):
             self.bfs(i)
         #print(self.opp.shortest_paths)
+    
+    def update_radar(self):
+        current_time = pygame.time.get_ticks()
+        if current_time - self.last_radar_time >= RADAR_DELAY:
+            mp = (self.player.pos[0] + 15), (self.player.pos[1] + 15) # Mittelpunkt
+            entry = [mp, current_time, 0] # MP, Zeit, Radius
+            self.radar_list.append(entry)
+            self.last_radar_time = current_time
+        if len(self.radar_list) > 0:
+            #print(self.radar_list)
+            for i in range (len(self.radar_list)): #jeden Radar im Radius updaten
+                if i >= len(self.radar_list): break
+                if current_time > self.radar_list[i][1]:
+                    if self.radar_list[i][2] > 13 * TILE_SIZE:
+                        self.radar_list.pop(i)
+                        continue
+                    else:
+                        self.radar_list[i][2] += (13 * TILE_SIZE / (1 * RADAR_DELAY / 1000)) / 60
+                        self.radar_list[i][1] = current_time
+                for n in range (3): #prüfen ob Opps getroffen werden
+                    opp_x = self.opp.opp_positions[n][0]
+                    opp_y = self.opp.opp_positions[n][1] 
+                    mp = self.radar_list[i][0]
+                    dist = pygame.math.Vector2(mp).distance_to((opp_x * TILE_SIZE + 25, opp_y * TILE_SIZE +  25))
+                    if abs(dist -  self.radar_list[i][2]) < 0.5 * TILE_SIZE:
+                        self.opp.draw(n)
+                pygame.draw.circle(self.screen, "red", mp, self.radar_list[i][2], 5)
+        
+        
+        #prüfen ob gegner berührt
+        
 
     def run(self):
         self.player = Player()
@@ -380,11 +416,12 @@ class Game():
                 self.player.move_counter = 0
                 self.update_opp()
             self.opp.move()
+            self.update_radar()
             if player_pos in self.opp.opp_positions:
                 self.winmode = False
                 self.running = False
                 break
-            self.opp.draw()
+
             if self.player.moving and self.player.movable(self.player.pos, self.player.temp_pos, "player"):
                 self.screen.blit(self.player.shade, self.player.temp_pos)
 
