@@ -264,6 +264,7 @@ class Game():
         self.difficulty = 0
         self.last_difficulty_time = 0
         self.wintypes = ["wins-easy", "wins-hard", "wins-warrior"]
+        self.gametypes = ["game-counter-easy", "game-counter-hard", "game-counter-warrior"]
 
     def reset(self):
         self.get_stats()
@@ -423,7 +424,7 @@ class Game():
                 else:
                     rating = 0
                     for i in range(len(self.wintypes)):
-                        winrate = self.stats[self.wintypes[i]] / self.stats["game-counter"] * 100
+                        winrate = self.stats[self.wintypes[i]] / self.stats[self.gametypes[i]] * 100
                         rating += (i+1) / 6 * winrate
                     rating = round(rating, 1)
 
@@ -491,6 +492,7 @@ class Game():
                     self.stats["game-counter"] += 1
                     if self.winmode:
                         self.stats[self.wintypes[self.difficulty]] += 1
+                        self.stats[self.gametypes[self.difficulty]] += 1
                         time = round((current_time - self.game_time) / 1000, 1)
                         if time < self.stats["highscore"]:
                             self.stats["highscore"] = time
