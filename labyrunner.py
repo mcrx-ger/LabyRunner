@@ -10,7 +10,7 @@ BUTTON_DELAY = 500
 RADAR_DELAY = 5000
 TILE_SIZE = 50
 PLAYER_SIZE = 30
-WINDOW_SIZE = (650, 650)
+WINDOW_SIZE = 650
 
 class Player:
     def __init__(self):
@@ -79,7 +79,7 @@ class Player:
             if (x_p,y_p) != self.selected_point:
                 vec_point = pygame.math.Vector2(x_p, y_p) - vec_centre
                 f = vec_point.dot(vec_controller) / (vec_point.length() * vec_controller.length())
-                deg = math.degrees(math.acos(f))
+                deg = math.degrees(math.acos(round(f, 8)))
                 deg_acc = (180 - deg) / 180
                 distance = vec_point.length()
                 point_acc_list[(x_p, y_p)] = [deg_acc, distance]
@@ -189,7 +189,7 @@ class Player:
                 self.last_button_time = current_time
 
 class Opponents():
-    def __init__(self):
+    def __init__(self, delay_i):
         self.opp_positions = [[0,0],[0,0],[0,0]]
         #random opponent positions
         centre = pygame.math.Vector2(6,6)
@@ -205,6 +205,8 @@ class Opponents():
         self.screen = game.screen #pygame.display.get_surface()
         self.shortest_paths = [[], [], []]
         self.last_move_time = 0
+        self.delay_list = [MOVE_DELAY * 1, MOVE_DELAY * 0.7, MOVE_DELAY * 0.5]
+        self.move_delay = self.delay_list[delay_i]
 
     def draw(self, i):
         pos = ((self.opp_positions[i][0] * TILE_SIZE + 15), (self.opp_positions[i][1] * TILE_SIZE + 15))
@@ -212,7 +214,7 @@ class Opponents():
 
     def move(self):
         current_time = pygame.time.get_ticks()
-        if current_time - self.last_move_time >= MOVE_DELAY * 0.7:
+        if current_time - self.last_move_time >= self.move_delay:
             for i in range (3):
                 if self.opp_positions[i] == self.shortest_paths[i][0]:
                     self.opp_positions[i] = self.shortest_paths[i][0]
@@ -232,6 +234,7 @@ class Game():
         with open('data/data.json', 'r') as file:
             self.data = json.load(file)
 
+
         # Check for connected controllers
         if pygame.joystick.get_count() > 0:
             self.controller = pygame.joystick.Joystick(0)
@@ -239,9 +242,13 @@ class Game():
 
         #Environment
         pygame.display.set_caption("LabyRunner")
-        self.screen = pygame.display.set_mode(WINDOW_SIZE)
+        self.screen = pygame.display.set_mode((WINDOW_SIZE, WINDOW_SIZE))
         self.running = True
         self.clock = pygame.time.Clock()
+        self.font = pygame.font.SysFont("comicsansms", 24)
+        self.font_fat = pygame.font.SysFont("bahnschrift", 75, bold=True)
+        self.text_labyrunner = self.font_fat.render("LABYRUNNER", True, "yellow")
+        self.text_instruction = self.font.render("Press SPACE to play, -> / <- to change difficulty", True, "white")
         
         #Orientation Variables
         self.vert_list = []
@@ -251,8 +258,25 @@ class Game():
         self.make_vert_list()
         self.make_point_list()
         self.finish_list = [[0,0], [0,12], [12,0], [12,12]]
-        self.radar_list = []
-        self.last_radar_time = -5000
+        self.difficulty_list = ["EASY", "HARD", "WARRIOR"]
+
+        self.mode = "start"
+        self.difficulty = 0
+        self.last_difficulty_time = 0
+        self.wintypes = ["wins-easy", "wins-hard", "wins-warrior"]
+
+    def reset(self):
+        self.get_stats()
+        self.vert_list = []
+        self.hor_list = []
+        self.point_list = {}
+        self.make_hor_list()
+        self.make_vert_list()
+        self.make_point_list()
+
+    def get_stats(self):
+        with open('data/stats.json', 'r') as file:
+            self.stats = json.load(file)
 
     def make_vert_list(self):
         lines = self.data["grid"][1::2]
@@ -324,16 +348,9 @@ class Game():
             screen = self.data["screen_lost"]
             rect_size = 650 / 25
             color = "red"
-        while True:
-            self.screen.fill((0,0,100))
-            paint_final_screen(screen, rect_size, color)
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-        
-            pygame.display.update()
-            self.clock.tick(60)
+
+        paint_final_screen(screen, rect_size, color)
+
 
     def bfs(self, opp_num):    #bfs format: [([6,7 #pos], [[0,0],[0,1],[1,1],...#path), ...(#nächster Weg)]
         queue = deque([(self.opp.opp_positions[opp_num], [])])
@@ -392,38 +409,98 @@ class Game():
                     if abs(dist -  self.radar_list[i][2]) < 0.5 * TILE_SIZE:
                         self.opp.draw(n)
                 pygame.draw.circle(self.screen, "red", mp, self.radar_list[i][2], 5)
-        
-        
-        #prüfen ob gegner berührt
-        
+                
 
     def run(self):
-        self.player = Player()
-        self.opp = Opponents()
-        self.update_opp()
+        self.get_stats()
         while self.running:
             self.screen.fill((0,0,100))
-            self.player.control_walls()
-            self.paint_walls()
-            self.screen.blit(self.player.image, self.player.pos)
-            self.player.move()
-            player_pos = [(self.player.pos[0] - 10) / TILE_SIZE, (self.player.pos[1] - 10) / TILE_SIZE]
-            if player_pos in self.finish_list:
-                self.winmode = True
-                self.running = False
-                break
-            if self.player.move_counter > 0:
-                self.player.move_counter = 0
-                self.update_opp()
-            self.opp.move()
-            self.update_radar()
-            if player_pos in self.opp.opp_positions:
-                self.winmode = False
-                self.running = False
-                break
+            current_time = pygame.time.get_ticks()
 
-            if self.player.moving and self.player.movable(self.player.pos, self.player.temp_pos, "player"):
-                self.screen.blit(self.player.shade, self.player.temp_pos)
+            if self.mode == "start":
+                if self.stats["game-counter"] == 0:
+                    rating = 0
+                else:
+                    rating = 0
+                    for i in range(len(self.wintypes)):
+                        winrate = self.stats[self.wintypes[i]] / self.stats["game-counter"] * 100
+                        rating += (i+1) / 6 * winrate
+                    rating = round(rating, 1)
+
+                highscore = self.stats["highscore"]
+                text_wr = self.font.render(f"RATING: {rating}%", True, "white")
+                text_pr = self.font.render(f"PERSONAL BEST: {highscore}s", True, "white")
+                text_difc = self.font.render(f"DIFFICULTY: {self.difficulty_list[self.difficulty]}", True, "white")
+
+                self.screen.blit(self.text_labyrunner, (WINDOW_SIZE * 0.075, WINDOW_SIZE * 0.1))
+                self.screen.blit(text_wr, (WINDOW_SIZE * 0.2, WINDOW_SIZE * 0.5))
+                self.screen.blit(text_pr, (WINDOW_SIZE * 0.2, WINDOW_SIZE * 0.6))
+                self.screen.blit(text_difc, (WINDOW_SIZE * 0.2, WINDOW_SIZE * 0.7))
+                self.screen.blit(self.text_instruction, (WINDOW_SIZE * 0.1, WINDOW_SIZE * 0.85))
+                
+
+                keys = pygame.key.get_pressed()
+                if keys[pygame.K_SPACE] or (pygame.joystick.get_count() > 0 and game.controller.get_button(10)):
+                    self.mode = "game"
+                    self.game_time = current_time
+
+                    self.player = Player()
+                    self.opp = Opponents(self.difficulty)
+                    self.update_opp()
+                    self.radar_list = []
+                    self.last_radar_time = current_time - 5000
+
+                if current_time - self.last_difficulty_time > 250:
+                    if keys[pygame.K_RIGHT] or (pygame.joystick.get_count() > 0 and game.controller.get_button(1)):
+                        self.difficulty = (self.difficulty + 1) % 3
+                        self.last_difficulty_time = current_time
+
+                    elif keys[pygame.K_LEFT] or (pygame.joystick.get_count() > 0 and game.controller.get_button(2)):
+                        self.difficulty = (self.difficulty - 1) % 3
+                        self.last_difficulty_time = current_time
+            
+            elif self.mode == "game":
+                self.player.control_walls()
+                self.paint_walls()
+                self.screen.blit(self.player.image, self.player.pos)
+                self.player.move()
+                player_pos = [(self.player.pos[0] - 10) / TILE_SIZE, (self.player.pos[1] - 10) / TILE_SIZE]
+                if player_pos in self.finish_list:
+                    self.winmode = True
+                    self.mode = "end"
+                    end_time = pygame.time.get_ticks()
+                    continue
+                if self.player.move_counter > 0:
+                    self.player.move_counter = 0
+                    self.update_opp()
+                self.opp.move()
+                self.update_radar()
+                if player_pos in self.opp.opp_positions:
+                    self.winmode = False
+                    self.mode = "end"
+                    end_time = pygame.time.get_ticks()
+                    continue
+
+                if self.player.moving and self.player.movable(self.player.pos, self.player.temp_pos, "player"):
+                    self.screen.blit(self.player.shade, self.player.temp_pos)
+
+            else:
+                self.show_final_screen()
+                if current_time - end_time > 2500:
+                    self.mode = "start"
+                    self.stats["game-counter"] += 1
+                    if self.winmode:
+                        self.stats[self.wintypes[self.difficulty]] += 1
+                        time = round((current_time - self.game_time) / 1000, 1)
+                        if time < self.stats["highscore"]:
+                            self.stats["highscore"] = time
+                            self.game_time = current_time
+
+                    with open("data/stats.json", 'w', encoding='utf-8') as f:
+                        json.dump(self.stats, f, indent=4, ensure_ascii=False)
+                    self.reset()
+                    
+
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -433,6 +510,5 @@ class Game():
 
             pygame.display.update()
             self.clock.tick(60)
-        self.show_final_screen()
 game = Game()
 game.run()
