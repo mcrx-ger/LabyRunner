@@ -260,7 +260,11 @@ class Game():
             for i in range(32)
         ]
         self.coll_frame_num = 0
-        self.last_col_time = 0
+        self.last_coll_time = 0
+        self.finish_x = 0
+        self.finish_y = 0
+        self.finish_angle = 0
+        self.scale_factor = 1
         
         #Orientation Variables
         self.vert_list = []
@@ -286,6 +290,11 @@ class Game():
         self.make_hor_list()
         self.make_vert_list()
         self.make_point_list()
+        self.coll_frame_num = 0
+        self.finish_x = 0
+        self.finish_y = 0
+        self.finish_angle = 0
+        self.scale_factor = 1
 
     def get_stats(self):
         with open('data/stats.json', 'r') as file:
@@ -351,14 +360,30 @@ class Game():
         self.paint_walls()
         #self.screen.blit(self.collision_frames[self.coll_frame_num], self.player.pos)
         self.screen.blit(self.collision_frames[self.coll_frame_num], self.player.pos - (30,30))
-        if current_time - self.last_col_time > 20:
+        if current_time - self.last_coll_time > 20:
             if self.coll_frame_num < 31:
                 self.coll_frame_num += 1
-                self.last_col_time = current_time
+                self.last_coll_time = current_time
                 return False
             else:
-                self.coll_frame_num = 0
                 return True
+
+    def play_finish(self):
+        new_width = int(self.player_final_surface.get_width() * self.scale_factor)
+        new_height = int(self.player_final_surface.get_height() * self.scale_factor)
+        scaled_surface = pygame.transform.scale(self.player_final_surface, (new_width, new_height))
+        rotated_surface = pygame.transform.rotate(scaled_surface, self.finish_angle)
+        rect = rotated_surface.get_rect(center= self.player.pos + (15, 15))
+        for i in range(3): self.opp.draw(i)
+        self.paint_walls()
+        self.screen.blit(rotated_surface, rect)
+        self.finish_angle += 5
+        self.scale_factor -= 0.008
+        if self.scale_factor <= 0:
+            return True
+        else:
+            return False
+
 
     def show_final_screen(self):
 
@@ -494,8 +519,10 @@ class Game():
                 player_pos = [(self.player.pos[0] - 10) / TILE_SIZE, (self.player.pos[1] - 10) / TILE_SIZE]
                 if player_pos in self.finish_list:
                     self.winmode = True
-                    self.mode = "end"
-                    end_time = pygame.time.get_ticks()
+                    self.mode = "win"
+                    self.player_final_surface = pygame.Surface((30,30), pygame.SRCALPHA)
+                    self.player_final_surface.fill("green")
+                    pygame.draw.rect(self.player_final_surface, (255,0,0), (0,0,30,30))
                     continue
                 if self.player.move_counter > 0:
                     self.player.move_counter = 0
@@ -505,7 +532,6 @@ class Game():
                 if player_pos in self.opp.opp_positions:
                     self.winmode = False
                     self.mode = "collision"
-                    end_time = pygame.time.get_ticks()
                     continue
 
                 if self.player.moving and self.player.movable(self.player.pos, self.player.temp_pos, "player"):
@@ -514,6 +540,12 @@ class Game():
             elif self.mode == "collision":
                 if self.play_collision(current_time):
                     self.mode = "end"
+                    end_time = pygame.time.get_ticks()
+
+            elif self.mode == "win":
+                if self.play_finish():
+                    self.mode = "end"
+                    end_time = pygame.time.get_ticks()
 
             else:
                 self.show_final_screen()
