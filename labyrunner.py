@@ -16,7 +16,7 @@ class Player:
     def __init__(self):
         #Player / Shadow appearances
         #self.image = pygame.image.load("data/images/player.png")
-        self.image = pygame.surface.Surface((TILE_SIZE - 20, TILE_SIZE - 20))
+        self.image = pygame.surface.Surface((PLAYER_SIZE, PLAYER_SIZE))
         self.image.fill((255,0,0))
         self.pos = (6*TILE_SIZE + 10, 6*TILE_SIZE + 10)
         self.shade = pygame.surface.Surface((PLAYER_SIZE, PLAYER_SIZE))
@@ -201,7 +201,7 @@ class Opponents():
         #Appearance
         self.opp_image = pygame.surface.Surface((TILE_SIZE - 30, TILE_SIZE - 30))
         #self.opp_image = pygame.image.load("data/images/enemy.png")
-        self.opp_image.fill("gray")
+        self.opp_image.fill((160,160,160))
         self.screen = game.screen #pygame.display.get_surface()
         self.shortest_paths = [[], [], []]
         self.last_move_time = 0
@@ -249,6 +249,18 @@ class Game():
         self.font_fat = pygame.font.SysFont("bahnschrift", 75, bold=True)
         self.text_labyrunner = self.font_fat.render("LABYRUNNER", True, "yellow")
         self.text_instruction = self.font.render("Press SPACE to play, -> / <- to change difficulty", True, "white")
+
+        #World
+        #collision_sheet1 = pygame.image.load("data/images/collision.png").convert_alpha()
+        collision_sheet2 = pygame.image.load("data/images/collision2.png").convert_alpha()
+        collision_sheet2.set_colorkey("white")
+        self.collision_frames = [
+            #pygame.transform.scale(collision_sheet1.subsurface(pygame.Rect(i*30, 0, 30, 30)), (30, 30))
+            pygame.transform.scale(collision_sheet2.subsurface(pygame.Rect(i*90, 0, 90, 90)), (90, 90))
+            for i in range(32)
+        ]
+        self.coll_frame_num = 0
+        self.last_col_time = 0
         
         #Orientation Variables
         self.vert_list = []
@@ -333,6 +345,20 @@ class Game():
                 pygame.draw.circle(self.screen, (26, 255, 0), (x * TILE_SIZE, y * TILE_SIZE), 5)
             else:
                 pygame.draw.circle(self.screen, (200, 0, 0), (x * TILE_SIZE, y * TILE_SIZE), 5)
+
+    def play_collision(self, current_time):
+        for i in range(3): self.opp.draw(i)
+        self.paint_walls()
+        #self.screen.blit(self.collision_frames[self.coll_frame_num], self.player.pos)
+        self.screen.blit(self.collision_frames[self.coll_frame_num], self.player.pos - (30,30))
+        if current_time - self.last_col_time > 20:
+            if self.coll_frame_num < 31:
+                self.coll_frame_num += 1
+                self.last_col_time = current_time
+                return False
+            else:
+                self.coll_frame_num = 0
+                return True
 
     def show_final_screen(self):
 
@@ -478,12 +504,16 @@ class Game():
                 self.update_radar()
                 if player_pos in self.opp.opp_positions:
                     self.winmode = False
-                    self.mode = "end"
+                    self.mode = "collision"
                     end_time = pygame.time.get_ticks()
                     continue
 
                 if self.player.moving and self.player.movable(self.player.pos, self.player.temp_pos, "player"):
                     self.screen.blit(self.player.shade, self.player.temp_pos)
+
+            elif self.mode == "collision":
+                if self.play_collision(current_time):
+                    self.mode = "end"
 
             else:
                 self.show_final_screen()
