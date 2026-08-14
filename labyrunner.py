@@ -453,9 +453,9 @@ class Game():
                     queue.pop(queue.index(coords_to_search[n]))
                 i_o += 1
 
-            for k in range(len(coords_to_search)):
-                coords = coords_to_search[k][1]
-                mode = coords_to_search[k][0]
+            while len(coords_to_search) > 0:
+                coords = coords_to_search[0][1]
+                mode = coords_to_search[0][0]
                 if coords not in visited:
                     visited.append(coords)
                     if mode == "o":
@@ -470,11 +470,28 @@ class Game():
                     for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                         if self.player.movable(v, v + (dx, dy), "opp") and [v.x + dx, v.y + dy] not in visited:
                             queue.append((mode, [v.x + dx, v.y + dy]))
-                coords_to_search.pop(k)
-        minmax_value = (fields_p / (fields_p + fields_o)) + (exits_p / (exits_p + exits_o))
+                coords_to_search.pop(0)
+
+        field_percent = fields_p / (fields_p + fields_o)
+        if exits_p > 0: 
+            exits_percent = exits_p / (exits_p + exits_o)
+            minmax_value = 0.5 * field_percent + 0.5 * exits_percent
+        else: 
+            dist = 0
+            for opp_coord in opp_positions:
+                dist += pygame.math.Vector2(player_pos).distance_to(opp_coord)
+            avg_dist = dist / len(opp_positions)
+            avg_dist_percent = avg_dist / self.closest_dist_to_exits(player_pos)
+            minmax_value = 0.5 * field_percent + 0.5 * avg_dist_percent
         return minmax_value
 
-
+    def closest_dist_to_exits(self, pos):
+        min_dist = 100000
+        for exit_coord in self.finish_list:
+            dist = pygame.math.Vector2(pos).distance_to(exit_coord)
+            if dist < min_dist:
+                min_dist = dist
+        return min_dist            
 
 
     def update_opp(self):
@@ -582,6 +599,7 @@ class Game():
                 if self.player.move_counter > 0:
                     self.player.move_counter = 0
                     self.update_opp()
+                    #print(self.minmax_value(player_pos, self.opp.opp_positions))
                 self.opp.move()
                 self.update_radar()
                 if player_pos in self.opp.opp_positions:
