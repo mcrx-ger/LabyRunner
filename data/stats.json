@@ -1,10 +1,9 @@
 {
-    "game-counter": 100,
-    "game-counter-easy": 16,
-    "game-counter-hard": 16,
-    "game-counter-warrior": 22,
-    "wins-easy": 14,
-    "wins-hard": 6,
-    "wins-warrior": 9,
-    "highscore": 15.7
+    "game-counter-easy": 1,
+    "game-counter-hard": 0,
+    "game-counter-warrior": 0,
+    "wins-easy": 1,
+    "wins-hard": 0,
+    "wins-warrior": 0,
+    "highscore": 25.0
 }

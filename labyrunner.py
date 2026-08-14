@@ -248,7 +248,7 @@ class Game():
         self.font = pygame.font.SysFont("comicsansms", 24)
         self.font_fat = pygame.font.SysFont("bahnschrift", 75, bold=True)
         self.text_labyrunner = self.font_fat.render("LABYRUNNER", True, "yellow")
-        self.text_instruction = self.font.render("Press SPACE to play, -> / <- to change difficulty", True, "white")
+        self.text_instruction = self.font.render("Press SPACE to play, -> / <- to change difficulty \nCtrl + R to reset stats", True, "white")
 
         #World
         #collision_sheet1 = pygame.image.load("data/images/collision.png").convert_alpha()
@@ -295,6 +295,10 @@ class Game():
         self.finish_y = 0
         self.finish_angle = 0
         self.scale_factor = 1
+
+    def update_stats(self):
+        with open("data/stats.json", 'w', encoding='utf-8') as f:
+            json.dump(self.stats, f, indent=4, ensure_ascii=False)
 
     def get_stats(self):
         with open('data/stats.json', 'r') as file:
@@ -408,27 +412,70 @@ class Game():
         queue = deque([(self.opp.opp_positions[opp_num], [])])
         player_pos = [int((self.player.pos[0] - 10) // TILE_SIZE), int((self.player.pos[1] - 10) // TILE_SIZE)]
         visited = []
-        while True:
-            try:
-                pos, path = queue.popleft()
-                v = pygame.math.Vector2(pos)
-                if pos not in visited:
-                    np = path
+        while len(queue) > 0:
+            pos, path = queue.popleft()
+            v = pygame.math.Vector2(pos)
+            if pos not in visited:
+                np = path
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    if self.player.movable(v, v + (dx, dy), "opp") and [v.x + dx, v.y + dy] not in visited:
+                        queue.append(([int(v.x) + dx, int(v.y) + dy], np + [pos]))
+                    if pos == player_pos:
+                        self.opp.shortest_paths[opp_num] = (np + [pos])[1:]
+                        return
+                visited.append(pos)
+
+        self.opp.shortest_paths[opp_num][0] = self.opp.opp_positions[opp_num]
+
+
+    def minmax_value(self, player_pos, opp_positions): #player_pos: [x,y], opp_positions: [[x,y],[x,y],[x,y]]
+        """provides the value for the minmax algorithm"""
+        i_p, i_o = 0,0
+        queue = [("o", opp_positions[i]) for i in range(len(opp_positions))] + [("p", player_pos)]
+        #Format: [("o", [x,y]), ("p", [x,y]), (...), ...]
+        visited = [] #Format: [[x,y],[x,y],...]
+        fields_p, fields_o, exits_p, exits_o = 0,0,0,0
+        while len(queue) > 0:
+            coords_to_search = []
+            if i_p * MOVE_DELAY <= i_o * self.opp.move_delay: 
+                for i in range(len(queue)): #alle Spielerkoordinaten raussuchen
+                    if queue[i][0] == "p":
+                        coords_to_search.append(queue[i])
+                for n in range(len(coords_to_search)):
+                    queue.pop(queue.index(coords_to_search[n]))
+                i_p += 1
+
+            else:
+                for i in range(len(queue)): #alle Botkoordinaten raussuchen
+                    if queue[i][0] == "o":
+                        coords_to_search.append(queue[i])
+                for n in range(len(coords_to_search)):
+                    queue.pop(queue.index(coords_to_search[n]))
+                i_o += 1
+
+            for k in range(len(coords_to_search)):
+                coords = coords_to_search[k][1]
+                mode = coords_to_search[k][0]
+                if coords not in visited:
+                    visited.append(coords)
+                    if mode == "o":
+                        if coords in self.finish_list:
+                            exits_o += 1
+                        fields_o += 1
+                    if mode == "p":
+                        if coords in self.finish_list:
+                            exits_p += 1
+                        fields_p += 1
+                    v = pygame.math.Vector2(coords)
                     for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                         if self.player.movable(v, v + (dx, dy), "opp") and [v.x + dx, v.y + dy] not in visited:
-                            queue.append(([int(v.x) + dx, int(v.y) + dy], np + [pos]))
-                        if pos == player_pos:
-                            self.opp.shortest_paths[opp_num] = (np + [pos])[1:]
-                            return
-                    visited.append(pos)
-            except IndexError:
-                self.opp.shortest_paths[opp_num][0] = self.opp.opp_positions[opp_num]
-                break
-                         
+                            queue.append((mode, [v.x + dx, v.y + dy]))
+                coords_to_search.pop(k)
+        minmax_value = (fields_p / (fields_p + fields_o)) + (exits_p / (exits_p + exits_o))
+        return minmax_value
 
-            #else:
-                #self.opp.shortest_paths[opp_num] = [self.opp.opp_positions[opp_num]]
-                #break
+
+
 
     def update_opp(self):
         for i in range(3):
@@ -470,14 +517,14 @@ class Game():
             current_time = pygame.time.get_ticks()
 
             if self.mode == "start":
-                if self.stats["game-counter"] == 0:
-                    rating = 0
-                else:
-                    rating = 0
-                    for i in range(len(self.wintypes)):
+                rating = 0
+                for i in range(len(self.wintypes)):
+                    if self.stats[self.gametypes[i]] == 0:
+                        winrate = 0
+                    else: 
                         winrate = self.stats[self.wintypes[i]] / self.stats[self.gametypes[i]] * 100
-                        rating += (i+1) / 6 * winrate
-                    rating = round(rating, 1)
+                    rating += (i+1) / 6 * winrate
+                rating = round(rating, 1)
 
                 highscore = self.stats["highscore"]
                 text_wr = self.font.render(f"RATING: {rating}%", True, "white")
@@ -501,6 +548,14 @@ class Game():
                     self.update_opp()
                     self.radar_list = []
                     self.last_radar_time = current_time - 5000
+
+                if keys[pygame.K_r] and keys[pygame.K_LCTRL]:
+                    self.stats["highscore"] = 10000
+                    for i in range (len(self.gametypes)):
+                        self.stats[self.gametypes[i]] = 0
+                        self.stats[self.wintypes[i]] = 0
+                    self.update_stats()
+
 
                 if current_time - self.last_difficulty_time > 250:
                     if keys[pygame.K_RIGHT] or (pygame.joystick.get_count() > 0 and game.controller.get_button(1)):
@@ -551,17 +606,15 @@ class Game():
                 self.show_final_screen()
                 if current_time - end_time > 2500:
                     self.mode = "start"
-                    self.stats["game-counter"] += 1
+                    self.stats[self.gametypes[self.difficulty]] += 1
                     if self.winmode:
                         self.stats[self.wintypes[self.difficulty]] += 1
-                        self.stats[self.gametypes[self.difficulty]] += 1
                         time = round((current_time - self.game_time) / 1000, 1)
                         if time < self.stats["highscore"]:
                             self.stats["highscore"] = time
                             self.game_time = current_time
 
-                    with open("data/stats.json", 'w', encoding='utf-8') as f:
-                        json.dump(self.stats, f, indent=4, ensure_ascii=False)
+                    self.update_stats()
                     self.reset()
                     
 
