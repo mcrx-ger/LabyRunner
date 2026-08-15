@@ -4,6 +4,7 @@ import json
 import random
 from collections import deque
 import math
+from itertools import product
 
 MOVE_DELAY = 1000 #ms
 BUTTON_DELAY = 500
@@ -215,14 +216,22 @@ class Opponents():
     def move(self):
         current_time = pygame.time.get_ticks()
         if current_time - self.last_move_time >= self.move_delay:
+            o_time = current_time - self.move_delay
+            p_time = current_time
+            player_pos = [int((game.player.pos[0] - 10) // TILE_SIZE), int((game.player.pos[1] - 10) // TILE_SIZE)]
+            value, new_positions = game.minimax(player_pos, self.opp_positions, 3, -float("inf"), float("inf"), o_time, p_time, "opp")
             for i in range (3):
-                if self.opp_positions[i] == self.shortest_paths[i][0]:
-                    self.opp_positions[i] = self.shortest_paths[i][0]
-                    self.last_move_time = current_time
-                else:
-                    self.opp_positions[i] = self.shortest_paths[i][0]
-                    self.shortest_paths[i].pop(0)
-                    self.last_move_time = current_time
+                self.opp_positions[i] = new_positions[i]
+            print(value)
+            self.last_move_time = current_time
+                
+                #if self.opp_positions[i] == self.shortest_paths[i][0]:
+                    #self.opp_positions[i] = self.shortest_paths[i][0]
+                    
+                #else:
+                    #self.opp_positions[i] = self.shortest_paths[i][0]
+                    #self.shortest_paths[i].pop(0)
+                    #self.last_move_time = current_time
 
 
 class Game():
@@ -428,63 +437,149 @@ class Game():
         self.opp.shortest_paths[opp_num][0] = self.opp.opp_positions[opp_num]
 
 
-    def minmax_value(self, player_pos, opp_positions): #player_pos: [x,y], opp_positions: [[x,y],[x,y],[x,y]]
+    def minmax_value(self, player_pos, opp_positions, mode): #player_pos: [x,y], opp_positions: [[x,y],[x,y],[x,y]]
         """provides the value for the minmax algorithm"""
-        i_p, i_o = 0,0
-        queue = [("o", opp_positions[i]) for i in range(len(opp_positions))] + [("p", player_pos)]
-        #Format: [("o", [x,y]), ("p", [x,y]), (...), ...]
-        visited = [] #Format: [[x,y],[x,y],...]
-        fields_p, fields_o, exits_p, exits_o = 0,0,0,0
-        while len(queue) > 0:
-            coords_to_search = []
-            if i_p * MOVE_DELAY <= i_o * self.opp.move_delay: 
-                for i in range(len(queue)): #alle Spielerkoordinaten raussuchen
-                    if queue[i][0] == "p":
-                        coords_to_search.append(queue[i])
-                for n in range(len(coords_to_search)):
-                    queue.pop(queue.index(coords_to_search[n]))
-                i_p += 1
+        #berechnet %der felder, die der spieler als erstes erreicht (Voronoi)
+        exits_p = 4
+        if mode == "opp":
+            i_p, i_o = 0,0
+            queue = [("o", opp_positions[i]) for i in range(len(opp_positions))] + [("p", player_pos)]
+            #Format: [("o", [x,y]), ("p", [x,y]), (...), ...]
+            visited = set() #Format: ((x,y),(x,y),...)
+            fields_p, fields_o, exits_p, exits_o = 0,0,0,0
+            while len(queue) > 0:
+                coords_to_search = []
+                if i_p * MOVE_DELAY <= i_o * self.opp.move_delay: 
+                    for i in range(len(queue)): #alle Spielerkoordinaten raussuchen
+                        if queue[i][0] == "p":
+                            coords_to_search.append(queue[i])
+                    for n in range(len(coords_to_search)):
+                        queue.pop(queue.index(coords_to_search[n]))
+                    i_p += 1
 
-            else:
-                for i in range(len(queue)): #alle Botkoordinaten raussuchen
-                    if queue[i][0] == "o":
-                        coords_to_search.append(queue[i])
-                for n in range(len(coords_to_search)):
-                    queue.pop(queue.index(coords_to_search[n]))
-                i_o += 1
+                else:
+                    for i in range(len(queue)): #alle Botkoordinaten raussuchen
+                        if queue[i][0] == "o":
+                            coords_to_search.append(queue[i])
+                    for n in range(len(coords_to_search)):
+                        queue.pop(queue.index(coords_to_search[n]))
+                    i_o += 1
 
-            while len(coords_to_search) > 0:
-                coords = coords_to_search[0][1]
-                mode = coords_to_search[0][0]
-                if coords not in visited:
-                    visited.append(coords)
-                    if mode == "o":
-                        if coords in self.finish_list:
-                            exits_o += 1
-                        fields_o += 1
-                    if mode == "p":
-                        if coords in self.finish_list:
-                            exits_p += 1
-                        fields_p += 1
-                    v = pygame.math.Vector2(coords)
-                    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                        if self.player.movable(v, v + (dx, dy), "opp") and [v.x + dx, v.y + dy] not in visited:
-                            queue.append((mode, [v.x + dx, v.y + dy]))
-                coords_to_search.pop(0)
+                while len(coords_to_search) > 0:
+                    coords = coords_to_search[0][1]
+                    mode = coords_to_search[0][0]
+                    key = (int(coords[0]), int(coords[1]))
+                    if key not in visited:
+                        visited.add(key)
+                        if mode == "o":
+                            if coords in self.finish_list:
+                                exits_o += 1
+                            fields_o += 1
+                        if mode == "p":
+                            if coords in self.finish_list:
+                                exits_p += 1
+                            fields_p += 1
+                        v = pygame.math.Vector2(coords)
+                        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                            if self.player.movable(v, v + (dx, dy), "opp") and (int(v.x + dx), int(v.y + dy)) not in visited:
+                                queue.append((mode, [v.x + dx, v.y + dy]))
+                    coords_to_search.pop(0)
+            field_percent = fields_p / (fields_p + fields_o)
 
-        field_percent = fields_p / (fields_p + fields_o)
-        if exits_p > 0: 
-            exits_percent = exits_p / (exits_p + exits_o)
-            minmax_value = 0.5 * field_percent + 0.5 * exits_percent
+            if exits_p > 0:
+                exits_percent = exits_p / 4
+                return 0.25 * exits_percent + 0.75 * field_percent
+
+        if mode == "player" or exits_p == 0: 
+            #Durchschnittlicher Abstand zu Opps berechnen
+            avg_dist = self.avg_dist_to_opps(player_pos, opp_positions)
+            avg_dist_percent = min((avg_dist / (2*self.closest_dist_to_exits(player_pos))), 1) #!! mit bfs ersetzen
+            
+            return avg_dist_percent
+        
+        
+        #Anzahl Ausgänge beim Spieler berechnen (ungenau)
+        """
+        exits_p = 0
+        for exit in self.finish_list:
+            p_has_exit = False
+            for o_pos in opp_positions:
+                if pygame.math.Vector2(player_pos).distance_to(exit) < pygame.math.Vector2(o_pos).distance_to(exit):
+                    p_has_exit = True
+                else:
+                    p_has_exit = False
+                    break
+            if p_has_exit:
+                exits_p += 1
+        """
+        
+
+    def minimax(self, player_pos, opp_positions, depth, alpha, beta, o_time, p_time, mode):
+        if player_pos in self.finish_list:
+            return 1, opp_positions
+        if player_pos in opp_positions:
+            return 0, opp_positions
+
+        if depth == 0:
+            return self.minmax_value(player_pos, opp_positions, mode), opp_positions
+
+        if self.next_to_move(o_time, p_time) == "player":
+            value = -float('inf')
+            for move in self.get_player_moves(player_pos):
+                new_val, _ = self.minimax(move, opp_positions, depth-1, alpha, beta, o_time, p_time + MOVE_DELAY, "player")
+                value = max(value, new_val)
+                alpha = max(alpha, value)
+                if beta <= alpha:
+                    break
+            return value, opp_positions
+
         else: 
-            dist = 0
-            for opp_coord in opp_positions:
-                dist += pygame.math.Vector2(player_pos).distance_to(opp_coord)
-            avg_dist = dist / len(opp_positions)
-            avg_dist_percent = avg_dist / self.closest_dist_to_exits(player_pos)
-            minmax_value = 0.5 * field_percent + 0.5 * avg_dist_percent
-        return minmax_value
+            value = float('inf')
+            best = opp_positions
+            for move in self.get_opp_moves(opp_positions, player_pos):
+                new_val, _ = self.minimax(player_pos, move, depth-1, alpha, beta, o_time + self.opp.move_delay, p_time, "opp")
+                if new_val < value:
+                    value = new_val
+                    best = move
+                beta = min(beta, value)
+                if beta <= alpha:
+                    break
+            return value, best
 
+    def next_to_move(self, o_time, p_time):
+        if o_time + self.opp.move_delay < p_time + MOVE_DELAY: #opp will move first again
+            return "opp"
+        else:
+            return "player"
+
+    def get_player_moves(self, player_pos):
+        v = pygame.math.Vector2(player_pos)
+        moves = [player_pos]
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            if self.player.movable(v, v + (dx, dy), "opp"):
+                moves.append([v.x + dx, v.y + dy])
+        return moves
+
+    def get_opp_moves(self, opp_positions, player_pos):
+        per_bot = []
+        for pos in opp_positions:
+            v = pygame.math.Vector2(pos)
+            options = []
+            for dx, dy in ((1,0), (-1,0), (0,1), (0,-1)):
+                if self.player.movable(v, v + (dx, dy), "opp"):
+                    options.append([int(v.x)+dx, int(v.y)+dy])
+            if not options:
+                options.append([int(v.x), int(v.y)])   # eingeklemmt -> stehen
+            per_bot.append(options)
+        opp_moves = [list(c) for c in product(*per_bot)]
+        return sorted(opp_moves, key=lambda m: self.avg_dist_to_opps(player_pos, m)) 
+
+    def avg_dist_to_opps(self, player_pos, opp_positions):
+        dist = 0
+        for opp_coord in opp_positions:
+            dist += pygame.math.Vector2(player_pos).distance_to(opp_coord)
+        return dist / len(opp_positions)
+                    
     def closest_dist_to_exits(self, pos):
         min_dist = 100000
         for exit_coord in self.finish_list:
@@ -492,7 +587,6 @@ class Game():
             if dist < min_dist:
                 min_dist = dist
         return min_dist            
-
 
     def update_opp(self):
         for i in range(3):
@@ -596,11 +690,12 @@ class Game():
                     self.player_final_surface.fill("green")
                     pygame.draw.rect(self.player_final_surface, (255,0,0), (0,0,30,30))
                     continue
-                if self.player.move_counter > 0:
-                    self.player.move_counter = 0
-                    self.update_opp()
+                #if self.player.move_counter > 0:
+                    #self.player.move_counter = 0
+                    #self.update_opp()
                     #print(self.minmax_value(player_pos, self.opp.opp_positions))
                 self.opp.move()
+                for i in range(3): self.opp.draw(i)
                 self.update_radar()
                 if player_pos in self.opp.opp_positions:
                     self.winmode = False
