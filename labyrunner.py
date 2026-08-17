@@ -35,9 +35,7 @@ class Player:
         self.last_selection_time = 0
         self.move_counter = 0
 
-
-
-    def movable(self, player_pos, shadow_pos, mode): #mode = "player" oder "opp"
+    def movable(self, player_pos, shadow_pos, mode, ignore_m_walls: bool): #mode = "player" oder "opp"
         if mode == "player":
             player_koord = (player_pos - pygame.math.Vector2(10,10)) / TILE_SIZE
             shadow_koord = (shadow_pos - pygame.math.Vector2(10,10)) / TILE_SIZE
@@ -50,22 +48,22 @@ class Player:
         px = int(player_koord.x)
         py = int(player_koord.y)
         if sx < px and sx >= 0:
-            if game.vert_list[py][px] == "#":
+            if game.vert_list[py][px] == "#" or (ignore_m_walls and game.vert_list[py][px] == "m"):
                 return True
             else:
                 return False
         elif sx > px and sx <= 13 :
-            if game.vert_list[py][px+1] == "#":
+            if game.vert_list[py][px+1] == "#" or (ignore_m_walls and game.vert_list[py][px+1] == "m"):
                 return True
             else:
                 return False
         elif sy < py and sy >= 0:
-            if game.hor_list[py][px] == "#":
+            if game.hor_list[py][px] == "#" or (ignore_m_walls and game.hor_list[py][px] == "m"):
                 return True
             else:
                 return False
         elif sy > py and sy <= 13:
-            if game.hor_list[py+1][px] == "#":
+            if game.hor_list[py+1][px] == "#" or (ignore_m_walls and game.hor_list[py+1][px] == "m"):
                 return True
             else:
                 return False
@@ -100,7 +98,6 @@ class Player:
                 elif p_acc > point_acc_list[max_acc]:
                     max_acc = (x_p, y_p)
 
-
         return max_acc
 
     def move(self):
@@ -126,7 +123,7 @@ class Player:
             self.moving = True
         else:
             self.moving = False
-        if current_time - self.last_move_time >= MOVE_DELAY and self.moving and self.movable(self.pos, self.temp_pos, "player"):
+        if current_time - self.last_move_time >= MOVE_DELAY and self.moving and self.movable(self.pos, self.temp_pos, "player", False):
             self.pos = self.temp_pos
             self.last_move_time = current_time
             self.moving = False
@@ -256,7 +253,6 @@ class Game():
         with open('data/data.json', 'r') as file:
             self.data = json.load(file)
 
-
         # Check for connected controllers
         if pygame.joystick.get_count() > 0:
             self.controller = pygame.joystick.Joystick(0)
@@ -268,9 +264,10 @@ class Game():
         self.running = True
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("comicsansms", 24)
+        self.font_small = pygame.font.SysFont("comicsansms", 18)
         self.font_fat = pygame.font.SysFont("bahnschrift", 75, bold=True)
         self.text_labyrunner = self.font_fat.render("LABYRUNNER", True, "yellow")
-        self.text_instruction = self.font.render("Press SPACE to play, -> / <- to change difficulty \nCtrl + R to reset stats", True, "white")
+        self.text_instruction = self.font_small.render("Press SPACE to play, -> / <- to change difficulty \nCtrl + R to reset stats \nRead README.md for more clarification", True, "white")
 
         #World
         #collision_sheet1 = pygame.image.load("data/images/collision.png").convert_alpha()
@@ -372,7 +369,7 @@ class Game():
                             v = pygame.math.Vector2(pos)
                             for dx,dy in ((1,0),(0,1),(-1,0),(0,-1)):
                                 n_v = (int(v.x + dx), int(v.y + dy))
-                                if self.player.movable(v, v + (dx, dy), "opp") and n_v not in visited:
+                                if self.player.movable(v, v + (dx, dy), "opp", False) and n_v not in visited:
                                     next_positions.append(n_v)
 
                     if len(next_positions) > 0: queue.append(next_positions)
@@ -400,12 +397,10 @@ class Game():
                             v = pygame.math.Vector2(pos)
                             for dx,dy in ((1,0),(0,1),(-1,0),(0,-1)):
                                 n_v = (int(v.x + dx), int(v.y + dy))
-                                if self.player.movable(v, v + (dx, dy), "opp") and n_v not in visited:
+                                if self.player.movable(v, v + (dx, dy), "opp", False) and n_v not in visited:
                                     next_positions.append(n_v)
-                    
                     if len(next_positions) > 0: queue.append(next_positions)
                     dist+=1
-                    
                 self.exit_metalist[s_pos] = exit_dist
 
             
@@ -442,7 +437,7 @@ class Game():
     def play_collision(self, current_time):
         for i in range(3): self.opp.draw(i)
         self.paint_walls()
-        #self.screen.blit(self.collision_frames[self.coll_frame_num], self.player.pos)
+        #self.screen.blit(self.collision_frames[self.coll_frame_num], self.player.pos) <- bei collision frame 1
         self.screen.blit(self.collision_frames[self.coll_frame_num], self.player.pos - (30,30))
         if current_time - self.last_coll_time > 20:
             if self.coll_frame_num < 31:
@@ -468,9 +463,7 @@ class Game():
         else:
             return False
 
-
     def show_final_screen(self):
-
         def paint_final_screen(screen, rect_size, color):
             for y in range (len(screen)):
                 for x in range (len(screen[0])):
@@ -484,9 +477,7 @@ class Game():
             screen = self.data["screen_lost"]
             rect_size = 650 / 25
             color = "red"
-
         paint_final_screen(screen, rect_size, color)
-
 
     def bfs(self, opp_num):    #bfs format: [([6,7 #pos], [[0,0],[0,1],[1,1],...#path), ...(#nächster Weg)]
         queue = deque([(self.opp.opp_positions[opp_num], [])])
@@ -498,7 +489,7 @@ class Game():
             if pos not in visited:
                 np = path
                 for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                    if self.player.movable(v, v + (dx, dy), "opp") and [v.x + dx, v.y + dy] not in visited:
+                    if self.player.movable(v, v + (dx, dy), "opp", False) and [v.x + dx, v.y + dy] not in visited:
                         queue.append(([int(v.x) + dx, int(v.y) + dy], np + [pos]))
                     if pos == player_pos:
                         self.opp.shortest_paths[opp_num] = (np + [pos])[1:]
@@ -506,7 +497,6 @@ class Game():
                 visited.append(pos)
 
         self.opp.shortest_paths[opp_num][0] = self.opp.opp_positions[opp_num]
-
 
     def minmax_value(self, player_pos, opp_positions): #player_pos: [x,y], opp_positions: [[x,y],[x,y],[x,y]]
         """provides the value for the minmax algorithm"""
@@ -530,9 +520,7 @@ class Game():
         dist_opps_avg = sum(self.player_metalist.get(p_tuple).get((o_x,o_y), 999) for o_x,o_y in opp_positions) / 3
         dist_opps_val = min(1, ((dist_opps_avg * opp_delay) / self.exit_metalist.get(p_tuple).get(n_exit,999)))
         exits_prc = p_exits / 4 
-
         return 0.5 * exits_prc + 0.4 * dist_opps_val + 0.1 * min(1, opp_delay * exit_val_max)
-        
 
     def minimax(self, player_pos, opp_positions, depth, alpha, beta, o_time, p_time, p_visited, o_visited):
         if player_pos in self.finish_list:
@@ -557,7 +545,6 @@ class Game():
                 if beta <= alpha:
                     break
             return value, opp_positions
-            
 
         else: 
             value = float("inf")
@@ -577,7 +564,6 @@ class Game():
                     break
             return value, best
 
-
     def next_to_move(self, o_time, p_time):
         if o_time + self.opp.move_delay < p_time + MOVE_DELAY: #opp will move first again
             return "opp"
@@ -588,7 +574,7 @@ class Game():
         v = pygame.math.Vector2(player_pos)
         moves = []
         for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            if self.player.movable(v, v + (dx, dy), "opp") and (int(v.x) + dx, int(v.y) + dy) not in p_visited:
+            if self.player.movable(v, v + (dx, dy), "opp", True) and (int(v.x) + dx, int(v.y) + dy) not in p_visited:
                 moves.append([int(v.x) + dx, int(v.y) + dy])
         return moves
 
@@ -599,7 +585,7 @@ class Game():
             options = []
             for dx, dy in ((1,0), (-1,0), (0,1), (0,-1)):
                 nxt = (int(v.x)+dx, int(v.y)+dy)
-                if self.player.movable(v, v + (dx, dy), "opp") and nxt not in o_visited[i]:
+                if self.player.movable(v, v + (dx, dy), "opp", False) and nxt not in o_visited[i]:
                     options.append([nxt[0], nxt[1]])
             if not options:
                 options.append([int(v.x), int(v.y)])
@@ -614,7 +600,6 @@ class Game():
     def update_opp(self):
         for i in range(3):
             self.bfs(i)
-        #print(self.opp.shortest_paths)
     
     def update_radar(self):
         current_time = pygame.time.get_ticks()
@@ -624,7 +609,6 @@ class Game():
             self.radar_list.append(entry)
             self.last_radar_time = current_time
         if len(self.radar_list) > 0:
-            #print(self.radar_list)
             for i in range (len(self.radar_list)): #jeden Radar im Radius updaten
                 if i >= len(self.radar_list): break
                 if current_time > self.radar_list[i][1]:
@@ -641,8 +625,7 @@ class Game():
                     dist = pygame.math.Vector2(mp).distance_to((opp_x * TILE_SIZE + 25, opp_y * TILE_SIZE +  25))
                     if abs(dist -  self.radar_list[i][2]) < 0.5 * TILE_SIZE:
                         self.opp.draw(n)
-                pygame.draw.circle(self.screen, "red", mp, self.radar_list[i][2], 5)
-                
+                pygame.draw.circle(self.screen, "red", mp, self.radar_list[i][2], 5)            
 
     def run(self):
         self.get_stats()
@@ -666,11 +649,10 @@ class Game():
                 text_difc = self.font.render(f"DIFFICULTY: {self.difficulty_list[self.difficulty]}", True, "white")
 
                 self.screen.blit(self.text_labyrunner, (WINDOW_SIZE * 0.075, WINDOW_SIZE * 0.1))
-                self.screen.blit(text_wr, (WINDOW_SIZE * 0.2, WINDOW_SIZE * 0.5))
-                self.screen.blit(text_pr, (WINDOW_SIZE * 0.2, WINDOW_SIZE * 0.6))
-                self.screen.blit(text_difc, (WINDOW_SIZE * 0.2, WINDOW_SIZE * 0.7))
-                self.screen.blit(self.text_instruction, (WINDOW_SIZE * 0.1, WINDOW_SIZE * 0.85))
-                
+                self.screen.blit(text_wr, (WINDOW_SIZE * 0.2, WINDOW_SIZE * 0.4))
+                self.screen.blit(text_pr, (WINDOW_SIZE * 0.2, WINDOW_SIZE * 0.5))
+                self.screen.blit(text_difc, (WINDOW_SIZE * 0.2, WINDOW_SIZE * 0.6))
+                self.screen.blit(self.text_instruction, (WINDOW_SIZE * 0.15, WINDOW_SIZE * 0.8))        
 
                 keys = pygame.key.get_pressed()
                 if keys[pygame.K_SPACE] or (pygame.joystick.get_count() > 0 and game.controller.get_button(10)):
@@ -690,7 +672,6 @@ class Game():
                         self.stats[self.gametypes[i]] = 0
                         self.stats[self.wintypes[i]] = 0
                     self.update_stats()
-
 
                 if current_time - self.last_difficulty_time > 250:
                     if keys[pygame.K_RIGHT] or (pygame.joystick.get_count() > 0 and game.controller.get_button(1)):
@@ -721,14 +702,14 @@ class Game():
                     self.player.move_counter = 0
                     self.update_opp()
                 self.opp.move()
-                for i in range(3): self.opp.draw(i)
+                #for i in range(3): self.opp.draw(i)
                 self.update_radar()
                 if player_pos in self.opp.opp_positions:
                     self.winmode = False
                     self.mode = "collision"
                     continue
 
-                if self.player.moving and self.player.movable(self.player.pos, self.player.temp_pos, "player"):
+                if self.player.moving and self.player.movable(self.player.pos, self.player.temp_pos, "player", False):
                     self.screen.blit(self.player.shade, self.player.temp_pos)
 
             elif self.mode == "collision":
@@ -760,7 +741,7 @@ class Game():
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    running = False
+                    self.running = False
                     pygame.quit()
                     sys.exit()
 
